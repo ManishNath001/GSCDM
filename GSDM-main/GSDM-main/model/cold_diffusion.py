@@ -76,6 +76,12 @@ class ColdDiffusion(nn.Module):
 
         pred_residual = self.unet(inp, time)
 
+        pred_residual = torch.clamp(
+            pred_residual,
+            -1,
+            1
+        )
+
         restored = (
             corrupted + pred_residual
         ).clamp(-1, 1)
@@ -90,10 +96,12 @@ class ColdDiffusion(nn.Module):
             gt
         )
 
-        perceptual_loss = self.perc(
-            restored,
-            gt
-        )
+        with torch.cuda.amp.autocast(enabled=False):
+
+            perceptual_loss = self.perc(
+                restored.float(),
+                gt.float()
+            )
 
         edge_x_loss = self.l1(
             torch.abs(restored[:, :, :, 1:] - restored[:, :, :, :-1]),
@@ -105,7 +113,11 @@ class ColdDiffusion(nn.Module):
             torch.abs(gt[:, :, 1:, :] - gt[:, :, :-1, :])
         )
 
-        edge_loss = edge_x_loss + edge_y_loss
+        edge_loss = torch.clamp(
+            edge_x_loss + edge_y_loss,
+            0,
+            10
+        )
 
         # IMPORTANT
         # Simplified stable loss formulation
@@ -115,6 +127,16 @@ class ColdDiffusion(nn.Module):
             1.0 * perceptual_loss +
             0.5 * edge_loss
         )
+
+        if torch.isnan(loss) or torch.isinf(loss):
+
+            print("WARNING: NaN/Inf loss detected")
+
+            loss = torch.zeros(
+                1,
+                device=loss.device,
+                requires_grad=True
+            ).mean()
 
         return loss
 
@@ -149,7 +171,11 @@ class ColdDiffusion(nn.Module):
 
             # IMPORTANT FIX
             # Direct residual prediction instead of recursive averaging
-            residual = pred_residual
+            residual = torch.clamp(
+                pred_residual,
+                -1,
+                1
+            )
 
         restored = corrupted + residual
 

@@ -111,7 +111,7 @@ def main():
 
             torch.nn.utils.clip_grad_norm_(
                 model.netG.parameters(),
-                1.0
+                0.5
             )
 
             scaler.step(optimizer)

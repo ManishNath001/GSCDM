@@ -22,7 +22,7 @@ train_dataset:
   use_shuffle: true
 
 gpu_ids:
-  - 0
+  - 5
 
 model:
   which_model_G: cold
@@ -72,7 +72,7 @@ train:
 
     # IMPORTANT
     # Higher LR improves convergence here
-    lr: 0.0001
+    lr: 0.00005
 
     type: adam
 
