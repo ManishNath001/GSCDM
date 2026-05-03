@@ -62,7 +62,8 @@ def main():
         batch_size=opt['train_dataset']['batch_size'],
         shuffle=opt['train_dataset']['use_shuffle'],
         num_workers=opt['train_dataset']['num_workers'],
-        pin_memory=True
+        pin_memory=True,
+        drop_last=True
     )
 
     model = DDPM(opt)
@@ -86,7 +87,7 @@ def main():
 
     save_freq = opt['train']['save_checkpoint_freq']
 
-    scaler = torch.cuda.amp.GradScaler()
+    scaler = torch.amp.GradScaler("cuda")
 
     i = 0
 
@@ -98,9 +99,9 @@ def main():
                 if torch.is_tensor(data[k]):
                     data[k] = data[k].to(device)
 
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
 
-            with torch.cuda.amp.autocast():
+            with torch.amp.autocast("cuda"):
 
                 loss = model.netG(data)
 
@@ -117,6 +118,7 @@ def main():
 
             scaler.update()
 
+            # correct order
             scheduler.step()
 
             if i % print_freq == 0:

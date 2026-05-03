@@ -19,6 +19,7 @@ class VGGPerceptualLoss(nn.Module):
 
     def forward(self, x, y):
 
+        # convert from [-1,1] -> [0,1]
         x = (x + 1) / 2
         y = (y + 1) / 2
 
@@ -89,11 +90,6 @@ class ColdDiffusion(nn.Module):
             gt
         )
 
-        mask_loss = self.l1(
-            restored * mask,
-            gt * mask
-        )
-
         perceptual_loss = self.perc(
             restored,
             gt
@@ -111,18 +107,13 @@ class ColdDiffusion(nn.Module):
 
         edge_loss = edge_x_loss + edge_y_loss
 
-        fft_loss = self.l1(
-            torch.fft.fft2(restored).abs(),
-            torch.fft.fft2(gt).abs()
-        )
-
+        # IMPORTANT
+        # Simplified stable loss formulation
         loss = (
-            3.0 * residual_loss +
-            1.5 * image_loss +
-            2.0 * mask_loss +
-            0.5 * perceptual_loss +
-            1.0 * edge_loss +
-            0.1 * fft_loss
+            2.0 * residual_loss +
+            1.0 * image_loss +
+            1.0 * perceptual_loss +
+            0.5 * edge_loss
         )
 
         return loss
@@ -156,12 +147,9 @@ class ColdDiffusion(nn.Module):
 
             pred_residual = self.unet(inp, time)
 
-            alpha = k / self.T
-
-            residual = (
-                alpha * residual +
-                (1 - alpha) * pred_residual
-            )
+            # IMPORTANT FIX
+            # Direct residual prediction instead of recursive averaging
+            residual = pred_residual
 
         restored = corrupted + residual
 

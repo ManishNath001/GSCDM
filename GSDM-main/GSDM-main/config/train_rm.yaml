@@ -13,9 +13,11 @@ train_dataset:
 
   resolution: [64, 288]
 
-  batch_size: 1
+  # IMPORTANT
+  # Increase batch size for stable diffusion residual learning
+  batch_size: 4
 
-  num_workers: 2
+  num_workers: 4
 
   use_shuffle: true
 
@@ -67,7 +69,11 @@ train:
   n_iter: 300000
 
   optimizer:
-    lr: 0.00002
+
+    # IMPORTANT
+    # Higher LR improves convergence here
+    lr: 0.0001
+
     type: adam
 
   print_freq: 25
