@@ -1,0 +1,168 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torchvision.models as models
+
+
+class VGGPerceptualLoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        vgg = models.vgg16(
+            weights=models.VGG16_Weights.DEFAULT
+        ).features[:16]
+
+        self.vgg = vgg.eval()
+
+        for p in self.vgg.parameters():
+            p.requires_grad = False
+
+    def forward(self, x, y):
+
+        x = (x + 1) / 2
+        y = (y + 1) / 2
+
+        return F.l1_loss(
+            self.vgg(x),
+            self.vgg(y)
+        )
+
+
+class ColdDiffusion(nn.Module):
+    def __init__(self, unet, T=100):
+        super().__init__()
+
+        self.unet = unet
+        self.T = T
+
+        self.l1 = nn.L1Loss()
+        self.perc = VGGPerceptualLoss()
+
+    def _alpha(self, k):
+        return (k.float() / self.T).view(-1,1,1,1)
+
+    def forward(self, batch):
+
+        corrupted = batch["corrupted"]
+        gt = batch["gt"]
+        structure = batch["structure"]
+        mask = batch["mask"]
+
+        B = corrupted.size(0)
+        device = corrupted.device
+
+        residual_gt = gt - corrupted
+
+        k = torch.randint(
+            1,
+            self.T + 1,
+            (B,),
+            device=device
+        )
+
+        alpha = self._alpha(k)
+
+        noisy_residual = residual_gt * (1 - alpha)
+
+        inp = torch.cat([
+            corrupted,
+            structure,
+            mask,
+            noisy_residual
+        ], dim=1)
+
+        time = k.float() / self.T
+
+        pred_residual = self.unet(inp, time)
+
+        restored = (
+            corrupted + pred_residual
+        ).clamp(-1, 1)
+
+        residual_loss = self.l1(
+            pred_residual,
+            residual_gt
+        )
+
+        image_loss = self.l1(
+            restored,
+            gt
+        )
+
+        mask_loss = self.l1(
+            restored * mask,
+            gt * mask
+        )
+
+        perceptual_loss = self.perc(
+            restored,
+            gt
+        )
+
+        edge_x_loss = self.l1(
+            torch.abs(restored[:, :, :, 1:] - restored[:, :, :, :-1]),
+            torch.abs(gt[:, :, :, 1:] - gt[:, :, :, :-1])
+        )
+
+        edge_y_loss = self.l1(
+            torch.abs(restored[:, :, 1:, :] - restored[:, :, :-1, :]),
+            torch.abs(gt[:, :, 1:, :] - gt[:, :, :-1, :])
+        )
+
+        edge_loss = edge_x_loss + edge_y_loss
+
+        fft_loss = self.l1(
+            torch.fft.fft2(restored).abs(),
+            torch.fft.fft2(gt).abs()
+        )
+
+        loss = (
+            3.0 * residual_loss +
+            1.5 * image_loss +
+            2.0 * mask_loss +
+            0.5 * perceptual_loss +
+            1.0 * edge_loss +
+            0.1 * fft_loss
+        )
+
+        return loss
+
+    @torch.no_grad()
+    def super_resolution(self, rm_in):
+
+        corrupted = rm_in[:, 0:3]
+        structure = rm_in[:, 3:7]
+        mask = rm_in[:, 7:10]
+
+        B = corrupted.size(0)
+        device = corrupted.device
+
+        residual = torch.zeros_like(corrupted)
+
+        for k in reversed(range(1, self.T + 1)):
+
+            time = torch.full(
+                (B,),
+                k / self.T,
+                device=device
+            )
+
+            inp = torch.cat([
+                corrupted,
+                structure,
+                mask,
+                residual
+            ], dim=1)
+
+            pred_residual = self.unet(inp, time)
+
+            alpha = k / self.T
+
+            residual = (
+                alpha * residual +
+                (1 - alpha) * pred_residual
+            )
+
+        restored = corrupted + residual
+
+        return restored.clamp(-1, 1)

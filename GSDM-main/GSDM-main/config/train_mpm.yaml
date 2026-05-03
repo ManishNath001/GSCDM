@@ -1,0 +1,25 @@
+name: MPM
+
+train_dataset:
+  corrupted_dir: "/fab3/mtech/2024/manish.nath/dataset/ht_train/Corrupted_Image"
+  gt_dir: "/fab3/mtech/2024/manish.nath/dataset/ht_train/Intact_Image"
+  mask_dir: "/fab3/mtech/2024/manish.nath/dataset/ht_train/Corrupted_mask"
+
+  resolution: [64, 288]
+  batch_size: 1
+  num_workers: 2
+
+gpu_ids:
+  - 1
+
+path:
+  checkpoint: "/fab3/mtech/2024/manish.nath/GSDM-main/checkpoints/mpm"
+  SPM_pretrain: "/fab3/mtech/2024/manish.nath/GSDM-main/checkpoints/spm.pt"
+
+train:
+  n_iter: 50000
+  lr: 0.0001
+  print_freq: 50
+  save_freq: 1000
+
+SPM_cum: 32
