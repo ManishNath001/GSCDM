@@ -105,6 +105,10 @@ def main():
 
                 loss = model.netG(data)
 
+                if loss is None:
+                    optimizer.zero_grad(set_to_none=True)
+                    continue
+
             scaler.scale(loss).backward()
 
             scaler.unscale_(optimizer)
@@ -118,7 +122,6 @@ def main():
 
             scaler.update()
 
-            # correct order
             scheduler.step()
 
             if i % print_freq == 0:

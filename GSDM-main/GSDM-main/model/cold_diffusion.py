@@ -19,7 +19,6 @@ class VGGPerceptualLoss(nn.Module):
 
     def forward(self, x, y):
 
-        # convert from [-1,1] -> [0,1]
         x = (x + 1) / 2
         y = (y + 1) / 2
 
@@ -40,7 +39,7 @@ class ColdDiffusion(nn.Module):
         self.perc = VGGPerceptualLoss()
 
     def _alpha(self, k):
-        return (k.float() / self.T).view(-1,1,1,1)
+        return (k.float() / self.T).view(-1, 1, 1, 1)
 
     def forward(self, batch):
 
@@ -96,7 +95,7 @@ class ColdDiffusion(nn.Module):
             gt
         )
 
-        with torch.cuda.amp.autocast(enabled=False):
+        with torch.amp.autocast("cuda", enabled=False):
 
             perceptual_loss = self.perc(
                 restored.float(),
@@ -119,8 +118,6 @@ class ColdDiffusion(nn.Module):
             10
         )
 
-        # IMPORTANT
-        # Simplified stable loss formulation
         loss = (
             2.0 * residual_loss +
             1.0 * image_loss +
@@ -132,11 +129,7 @@ class ColdDiffusion(nn.Module):
 
             print("WARNING: NaN/Inf loss detected")
 
-            loss = torch.zeros(
-                1,
-                device=loss.device,
-                requires_grad=True
-            ).mean()
+            return None
 
         return loss
 
@@ -169,8 +162,6 @@ class ColdDiffusion(nn.Module):
 
             pred_residual = self.unet(inp, time)
 
-            # IMPORTANT FIX
-            # Direct residual prediction instead of recursive averaging
             residual = torch.clamp(
                 pred_residual,
                 -1,
