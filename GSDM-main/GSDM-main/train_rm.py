@@ -1,3 +1,5 @@
+# train_rm.py
+
 import os
 import argparse
 import yaml
@@ -11,11 +13,19 @@ import util
 from model.model import DDPM
 
 
-def save_checkpoint(model, opt, epoch, i):
+def save_checkpoint(
+    model,
+    opt,
+    epoch,
+    i
+):
 
     save_dir = opt['path']['log']
 
-    os.makedirs(save_dir, exist_ok=True)
+    os.makedirs(
+        save_dir,
+        exist_ok=True
+    )
 
     save_path = os.path.join(
         save_dir,
@@ -23,9 +33,14 @@ def save_checkpoint(model, opt, epoch, i):
     )
 
     torch.save({
-        "model": model.netG.state_dict(),
-        "iter": i,
-        "epoch": epoch
+        "model":
+        model.netG.state_dict(),
+
+        "iter":
+        i,
+
+        "epoch":
+        epoch
     }, save_path)
 
     print(f"Saved: {save_path}")
@@ -43,26 +58,54 @@ def main():
 
     args = parser.parse_args()
 
-    with open(args.config, 'r') as f:
+    with open(
+        args.config,
+        'r'
+    ) as f:
+
         opt = yaml.safe_load(f)
 
     device = torch.device(
-        "cuda" if torch.cuda.is_available() else "cpu"
+        "cuda"
+        if torch.cuda.is_available()
+        else "cpu"
     )
 
     dataset = util.rm_train_dataset(
-        corrupted_dir=opt['train_dataset']['corrupted_dir'],
-        gt_dir=opt['train_dataset']['gt_dir'],
-        structure_dir=opt['train_dataset']['structure_dir'],
-        mask_dir=opt['train_dataset']['mask_dir']
+        corrupted_dir=opt[
+            'train_dataset'
+        ]['corrupted_dir'],
+
+        gt_dir=opt[
+            'train_dataset'
+        ]['gt_dir'],
+
+        structure_dir=opt[
+            'train_dataset'
+        ]['structure_dir'],
+
+        mask_dir=opt[
+            'train_dataset'
+        ]['mask_dir']
     )
 
     loader = DataLoader(
         dataset,
-        batch_size=opt['train_dataset']['batch_size'],
-        shuffle=opt['train_dataset']['use_shuffle'],
-        num_workers=opt['train_dataset']['num_workers'],
+
+        batch_size=opt[
+            'train_dataset'
+        ]['batch_size'],
+
+        shuffle=opt[
+            'train_dataset'
+        ]['use_shuffle'],
+
+        num_workers=opt[
+            'train_dataset'
+        ]['num_workers'],
+
         pin_memory=True,
+
         drop_last=True
     )
 
@@ -72,22 +115,36 @@ def main():
 
     optimizer = torch.optim.AdamW(
         model.netG.parameters(),
-        lr=float(opt['train']['optimizer']['lr']),
+
+        lr=float(
+            opt['train']
+            ['optimizer']['lr']
+        ),
+
         weight_decay=1e-4
     )
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        T_max=opt['train']['n_iter']
+    scheduler = (
+        torch.optim.lr_scheduler
+        .CosineAnnealingLR(
+            optimizer,
+            T_max=opt['train']['n_iter']
+        )
     )
 
     n_iter = opt['train']['n_iter']
 
-    print_freq = opt['train']['print_freq']
+    print_freq = opt[
+        'train'
+    ]['print_freq']
 
-    save_freq = opt['train']['save_checkpoint_freq']
+    save_freq = opt[
+        'train'
+    ]['save_checkpoint_freq']
 
-    scaler = torch.amp.GradScaler("cuda")
+    scaler = torch.amp.GradScaler(
+        "cuda"
+    )
 
     i = 0
 
@@ -96,29 +153,49 @@ def main():
         for data in tqdm(loader):
 
             for k in data:
-                if torch.is_tensor(data[k]):
-                    data[k] = data[k].to(device)
 
-            optimizer.zero_grad(set_to_none=True)
+                if torch.is_tensor(
+                    data[k]
+                ):
 
-            with torch.amp.autocast("cuda"):
+                    data[k] = data[k].to(
+                        device
+                    )
+
+            optimizer.zero_grad(
+                set_to_none=True
+            )
+
+            with torch.amp.autocast(
+                "cuda"
+            ):
 
                 loss = model.netG(data)
 
                 if loss is None:
-                    optimizer.zero_grad(set_to_none=True)
+
+                    optimizer.zero_grad(
+                        set_to_none=True
+                    )
+
                     continue
 
-            scaler.scale(loss).backward()
+            scaler.scale(
+                loss
+            ).backward()
 
-            scaler.unscale_(optimizer)
+            scaler.unscale_(
+                optimizer
+            )
 
             torch.nn.utils.clip_grad_norm_(
                 model.netG.parameters(),
-                0.5
+                0.2
             )
 
-            scaler.step(optimizer)
+            scaler.step(
+                optimizer
+            )
 
             scaler.update()
 
@@ -128,7 +205,8 @@ def main():
 
                 print(
                     f"Iter {i} | "
-                    f"Loss: {loss.item():.6f}"
+                    f"Loss: "
+                    f"{loss.item():.6f}"
                 )
 
             if i % save_freq == 0:
@@ -144,7 +222,9 @@ def main():
 
             if i >= n_iter:
 
-                print("Training completed")
+                print(
+                    "Training completed"
+                )
 
                 return
 

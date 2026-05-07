@@ -18,7 +18,6 @@ class VGGPerceptualLoss(nn.Module):
             p.requires_grad = False
 
     def forward(self, x, y):
-
         x = (x + 1) / 2
         y = (y + 1) / 2
 
@@ -42,7 +41,6 @@ class ColdDiffusion(nn.Module):
         return (k.float() / self.T).view(-1, 1, 1, 1)
 
     def forward(self, batch):
-
         corrupted = batch["corrupted"]
         gt = batch["gt"]
         structure = batch["structure"]
@@ -51,57 +49,42 @@ class ColdDiffusion(nn.Module):
         B = corrupted.size(0)
         device = corrupted.device
 
-        residual_gt = gt - corrupted
-
         k = torch.randint(
-            1,
-            self.T + 1,
-            (B,),
-            device=device
+            1, self.T + 1, (B,), device=device
         )
 
         alpha = self._alpha(k)
 
-        noisy_residual = residual_gt * (1 - alpha)
+        # noisy clean estimate
+        noisy_clean = (
+            gt * (1 - alpha) +
+            corrupted * alpha
+        )
 
         inp = torch.cat([
             corrupted,
             structure,
             mask,
-            noisy_residual
+            noisy_clean
         ], dim=1)
 
         time = k.float() / self.T
 
-        pred_residual = self.unet(inp, time)
+        pred_clean = self.unet(inp, time)
 
-        pred_residual = torch.clamp(
-            pred_residual,
-            -1,
-            1
-        )
+        pred_clean = torch.clamp(pred_clean, -1.5, 1.5)
 
-        restored = (
-            corrupted + pred_residual
-        ).clamp(-1, 1)
+        restored = pred_clean.clamp(-1, 1)
 
-        residual_loss = self.l1(
-            pred_residual,
-            residual_gt
-        )
-
-        image_loss = self.l1(
-            restored,
-            gt
-        )
+        image_loss = self.l1(restored, gt)
 
         with torch.amp.autocast("cuda", enabled=False):
-
             perceptual_loss = self.perc(
                 restored.float(),
                 gt.float()
             )
 
+        # edge loss
         edge_x_loss = self.l1(
             torch.abs(restored[:, :, :, 1:] - restored[:, :, :, :-1]),
             torch.abs(gt[:, :, :, 1:] - gt[:, :, :, :-1])
@@ -112,30 +95,22 @@ class ColdDiffusion(nn.Module):
             torch.abs(gt[:, :, 1:, :] - gt[:, :, :-1, :])
         )
 
-        edge_loss = torch.clamp(
-            edge_x_loss + edge_y_loss,
-            0,
-            10
-        )
+        edge_loss = torch.clamp(edge_x_loss + edge_y_loss, 0, 10)
 
         loss = (
-            2.0 * residual_loss +
             1.0 * image_loss +
-            1.0 * perceptual_loss +
+            0.6 * perceptual_loss +
             0.5 * edge_loss
         )
 
         if torch.isnan(loss) or torch.isinf(loss):
-
             print("WARNING: NaN/Inf loss detected")
-
             return None
 
         return loss
 
     @torch.no_grad()
     def super_resolution(self, rm_in):
-
         corrupted = rm_in[:, 0:3]
         structure = rm_in[:, 3:7]
         mask = rm_in[:, 7:10]
@@ -143,10 +118,9 @@ class ColdDiffusion(nn.Module):
         B = corrupted.size(0)
         device = corrupted.device
 
-        residual = torch.zeros_like(corrupted)
+        current = corrupted.clone()
 
         for k in reversed(range(1, self.T + 1)):
-
             time = torch.full(
                 (B,),
                 k / self.T,
@@ -157,17 +131,35 @@ class ColdDiffusion(nn.Module):
                 corrupted,
                 structure,
                 mask,
-                residual
+                current
             ], dim=1)
 
-            pred_residual = self.unet(inp, time)
+            pred_clean = self.unet(inp, time)
 
-            residual = torch.clamp(
-                pred_residual,
-                -1,
-                1
+            pred_clean = torch.nan_to_num(
+                pred_clean,
+                nan=0.0,
+                posinf=1.0,
+                neginf=-1.0
             )
 
-        restored = corrupted + residual
+            pred_clean = torch.clamp(pred_clean, -1.5, 1.5)
+
+            # 🔥 CRITICAL FIX: ANCHORED RECONSTRUCTION
+            alpha = k / self.T
+
+            current = (
+                (1 - alpha) * pred_clean +
+                alpha * corrupted
+            )
+
+        restored = current
+
+        restored = torch.nan_to_num(
+            restored,
+            nan=0.0,
+            posinf=1.0,
+            neginf=-1.0
+        )
 
         return restored.clamp(-1, 1)

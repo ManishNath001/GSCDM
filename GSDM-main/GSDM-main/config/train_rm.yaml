@@ -1,20 +1,23 @@
+# config/train_rm.yaml
+
 name: RM
 
 distributed: false
 
 train_dataset:
+
   dataset_name: "HT"
 
   corrupted_dir: "/fab3/mtech/2024/manish.nath/dataset/ht_train/Corrupted_Image"
+
   gt_dir: "/fab3/mtech/2024/manish.nath/dataset/ht_train/Intact_Image"
 
   structure_dir: "./precomputed/structure"
+
   mask_dir: "./precomputed/mask"
 
   resolution: [64, 288]
 
-  # IMPORTANT
-  # Increase batch size for stable diffusion residual learning
   batch_size: 4
 
   num_workers: 4
@@ -25,24 +28,26 @@ gpu_ids:
   - 5
 
 model:
+
   which_model_G: cold
 
   beta_schedule:
+
     train:
+
       schedule: linear
+
       linear_start: 1.0e-06
+
       linear_end: 0.01
+
       n_timestep: 100
 
   diffusion:
+
     image_size: [64, 288]
 
   unet:
-
-    # corrupted(3)
-    # structure(4)
-    # mask(3)
-    # residual(3)
 
     in_channel: 13
 
@@ -61,24 +66,25 @@ model:
     norm_groups: 16
 
 path:
+
   log: "./checkpoints/HT/rm_checkpoints"
 
 phase: train
 
 train:
+
   n_iter: 300000
 
   optimizer:
 
-    # IMPORTANT
-    # Higher LR improves convergence here
-    lr: 0.00005
-
     type: adam
+
+    lr: 0.00005
 
   print_freq: 25
 
   save_checkpoint_freq: 1000
 
 env:
+
   PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
