@@ -116,7 +116,7 @@ class rm_train_dataset(Dataset):
 
         # ================= MASK =================
 
-        mask = mask.clamp(0, 1)
+        mask = (mask > 0.5).float()
 
         return {
             "corrupted": corrupted,

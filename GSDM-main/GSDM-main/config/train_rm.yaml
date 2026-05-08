@@ -67,7 +67,7 @@ model:
 
 path:
 
-  log: "./checkpoints/HT/rm_checkpoints"
+  log: "./checkpoints/HT/rm_checkpoints_restormer"
 
 phase: train
 
